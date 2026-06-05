@@ -38,6 +38,8 @@ conda activate gemma4
 pip install -U huggingface_hub
 huggingface-cli login
 
+huggingface-cli download google/gemma-4-31B-it \
+    --local-dir /mnt/models/gemma-4-31B-it
 ##--------------------------------##
 Step 1 — Delete existing env
 bashconda deactivate
@@ -87,7 +89,5 @@ python -c "import transformers; print(transformers.__version__)"
 python -c "import vllm; print(vllm.__version__)"
 # 0.8.5 ✅
 
-huggingface-cli download google/gemma-4-31B-it \
-    --local-dir /mnt/models/gemma-4-31B-it
-
+CUDA_VISIBLE_DEVICES=0 python -m llama_cpp.server   --model /mnt/f_disk/gitaa/debayan/Internal_LLM/models/Qwen3-Coder-30B-A3B-Instruct-GGUF/Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf   --port 8006   --host 0.0.0.0   --n_gpu_layers 99   --n_ctx 8192   --chat_format chatml
 ##-------------------------------##
