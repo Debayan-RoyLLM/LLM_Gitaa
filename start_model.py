@@ -3,205 +3,129 @@
 import yaml
 import subprocess
 import os
-import time
 import sys
+import time
+import logging
+from datetime import datetime
 
 
-CONFIG_FILE = "./litellm_config.yaml"
+# ─── Logger ──────────────────────────────────────────────────────
+log_file = f"start_model_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s",
+    handlers=[
+        logging.FileHandler(log_file),
+        logging.StreamHandler(sys.stdout),
+    ]
+)
+
+logger = logging.getLogger(__name__)
 
 
-# ─── Step 1: Read models from litellm_config.yaml ────────────────
-def load_models_from_config(config_file):
-    with open(config_file, "r") as f:
-        config = yaml.safe_load(f)
+# ─── Config ──────────────────────────────────────────────────────
+CONFIG_FILE = os.environ.get("CONFIG_FILE", "./litellm_config.yaml")
 
-    models = []
-    for entry in config.get("model_list", []):
-        name      = entry["model_name"]
-        params    = entry["litellm_params"]
-        api_base  = params.get("api_base", "")
-        port      = api_base.rstrip("/").split(":")[-1].replace("/v1", "")
-        model_str = params.get("model", "")
-        max_tokens= params.get("max_tokens", 2048)
+# required
+MODEL_NAME = os.environ.get("MODEL_NAME")
+MODEL_PATH = os.environ.get("MODEL_PATH")
+GPU_INDEX  = os.environ.get("GPU_INDEX")
 
-        models.append({
-            "name"      : name,
-            "port"      : port,
-            "model_str" : model_str,
-            "max_tokens": max_tokens,
-        })
-
-    return models
+# optional
+VLLM_PORT     = os.environ.get("VLLM_PORT")
+MAX_MODEL_LEN = os.environ.get("MAX_MODEL_LEN", "8192")
+GPU_MEMORY    = os.environ.get("GPU_MEMORY",    "0.80")
+DTYPE         = os.environ.get("DTYPE",         "bfloat16")
 
 
-# ─── Step 2: Ask for base model directory ────────────────────────
-def get_base_dir():
-    base_dir = input("\nEnter base directory where models are stored\n"
-                     "(e.g. /mnt/f_disk/gitaa/debayan/Internal_LLM/models): ").strip()
-    if not os.path.isdir(base_dir):
-        print(f"⚠️  Warning: '{base_dir}' does not exist. Proceeding anyway.")
-    return base_dir
-
-
-# ─── Step 3: Improved fuzzy match model name to folder ───────────
-def normalize(s):
-    """ strip everything except alphanumeric chars and lowercase """
-    return ''.join(c for c in s.lower() if c.isalnum())
-
-def guess_model_folder(model_name, base_dir):
-    if not os.path.isdir(base_dir):
-        return None
-
-    folders     = os.listdir(base_dir)
-    model_norm  = normalize(model_name)
-
-    best_match  = None
-    best_score  = 0
-
-    for folder in folders:
-        folder_norm = normalize(folder)
-
-        # score = how many chars of model_name appear in folder_name
-        # check both directions for partial overlap
-        if model_norm in folder_norm:
-            score = len(model_norm)
-        elif folder_norm in model_norm:
-            score = len(folder_norm)
-        else:
-            # count common leading characters
-            score = sum(1 for a, b in zip(model_norm, folder_norm) if a == b)
-
-        if score > best_score:
-            best_score = score
-            best_match = folder
-
-    # only return if score is meaningful (at least 5 chars matched)
-    if best_score >= 5:
-        return os.path.join(base_dir, best_match)
-    return None
-
-
-# ─── Step 4: Show models as numbered table ───────────────────────
-def show_models(models, base_dir):
-    print("\n" + "="*65)
-    print(f"  {'#':<4} {'Model Name':<30} {'Port':<8} {'Folder Found'}")
-    print("="*65)
-    for i, m in enumerate(models, 1):
-        guessed = guess_model_folder(m["name"], base_dir)
-        m["guessed_path"] = guessed
-        folder  = os.path.basename(guessed) if guessed else "⚠️  not found"
-        print(f"  {i:<4} {m['name']:<30} {m['port']:<8} {folder}")
-    print("="*65)
-    print("  Enter the number to select a model")
-    print("="*65)
-
-
-# ─── Step 5: Get user selection ──────────────────────────────────
-def get_user_input(models, base_dir):
-
-    while True:
-        choice = input("\nEnter model number (1-{}): ".format(len(models))).strip()
-        if choice.isdigit() and 1 <= int(choice) <= len(models):
-            selected = models[int(choice) - 1]
-            break
-        print(f"❌ Invalid input. Enter a number between 1 and {len(models)}")
-
-    print(f"\n✅ Selected: {selected['name']}")
-
-    # port
-    port_input = input(f"Enter vLLM port [press Enter for default: {selected['port']}]: ").strip()
-    vllm_port  = port_input if port_input else selected["port"]
-
-    # GPU
-    gpu_index = input("Enter GPU index (e.g. 0, 1, 2): ").strip()
-
-    # model path
-    guessed    = selected.get("guessed_path", "")
-    path_input = input(f"Enter model path [press Enter for: {guessed}]: ").strip()
-    model_path = path_input if path_input else guessed
-
-    if not model_path:
-        print("❌ Model path is required!")
+# ─── Validate required env vars ──────────────────────────────────
+def validate_env():
+    missing = [k for k, v in {"MODEL_NAME": MODEL_NAME,
+                               "MODEL_PATH": MODEL_PATH,
+                               "GPU_INDEX" : GPU_INDEX}.items() if not v]
+    if missing:
+        logger.error(f"Missing required env vars: {missing}")
+        logger.error("Usage: MODEL_NAME=qwen-2.5-coder-7b MODEL_PATH=./models/Qwen GPU_INDEX=0 nohup python3 start_model.py &")
         sys.exit(1)
 
-    return {
-        "name"      : selected["name"],
-        "vllm_port" : vllm_port,
-        "gpu_index" : gpu_index,
-        "model_path": model_path,
-        "max_tokens": selected["max_tokens"],
-    }
+    if not os.path.isdir(MODEL_PATH):
+        logger.error(f"MODEL_PATH does not exist: {MODEL_PATH}")
+        sys.exit(1)
 
 
-# ─── Step 6: Kill existing vLLM ──────────────────────────────────
+# ─── Load default port from config ───────────────────────────────
+def get_vllm_port():
+    if VLLM_PORT:
+        return VLLM_PORT
+
+    with open(CONFIG_FILE) as f:
+        config = yaml.safe_load(f)
+
+    for entry in config.get("model_list", []):
+        if entry["model_name"] == MODEL_NAME:
+            api_base = entry["litellm_params"].get("api_base", "")
+            return api_base.rstrip("/").split(":")[-1].replace("/v1", "")
+
+    logger.error(f"Model '{MODEL_NAME}' not found in {CONFIG_FILE}")
+    sys.exit(1)
+
+
+# ─── Kill existing vLLM ──────────────────────────────────────────
 def kill_existing_vllm():
-    print("\n🔴 Stopping existing vLLM process...")
     result = subprocess.run(["pkill", "-f", "vllm serve"], capture_output=True)
     if result.returncode == 0:
-        print("✅ Killed existing vLLM")
+        logger.info("Killed existing vLLM process")
         time.sleep(2)
-    else:
-        print("ℹ️  No existing vLLM process found")
 
 
-# ─── Step 7: Start vLLM ──────────────────────────────────────────
-def start_vllm(selection):
-    print(f"\n🚀 Starting vLLM...")
-    print(f"   Model : {selection['name']}")
-    print(f"   Port  : {selection['vllm_port']}")
-    print(f"   GPU   : {selection['gpu_index']}")
-    print(f"   Path  : {selection['model_path']}")
-
+# ─── Start vLLM ──────────────────────────────────────────────────
+def start_vllm(port):
     env = os.environ.copy()
-    env["CUDA_VISIBLE_DEVICES"] = selection["gpu_index"]
+    env["CUDA_VISIBLE_DEVICES"] = GPU_INDEX
 
     cmd = [
-        "vllm", "serve", selection["model_path"],
-        "--port"                  , selection["vllm_port"],
+        "vllm", "serve", MODEL_PATH,
+        "--port"                  , port,
         "--api-key"               , "not-needed",
         "--enforce-eager",
-        "--max-model-len"         , "8192",
-        "--dtype"                 , "bfloat16",
-        "--gpu-memory-utilization", "0.80",
-        "--served-model-name"     , selection["name"],
+        "--max-model-len"         , MAX_MODEL_LEN,
+        "--dtype"                 , DTYPE,
+        "--gpu-memory-utilization", GPU_MEMORY,
+        "--served-model-name"     , MODEL_NAME,
     ]
 
-    process = subprocess.Popen(cmd, env=env)
-    print(f"\n✅ vLLM started (PID: {process.pid})")
-    return process
+    logger.info(f"Starting vLLM | model={MODEL_NAME} port={port} gpu={GPU_INDEX}")
+    logger.info(f"Command: {' '.join(cmd)}")
+
+    return subprocess.Popen(cmd, env=env,
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            text=True, bufsize=1)
+
+
+# ─── Stream vLLM logs ────────────────────────────────────────────
+def stream_logs(process):
+    try:
+        for line in process.stdout:
+            line = line.rstrip()
+            if line:
+                logger.info(f"[vllm] {line}")
+        process.wait()
+        logger.warning(f"vLLM exited with code: {process.returncode}")
+    except KeyboardInterrupt:
+        process.terminate()
+        process.wait()
+        logger.info("vLLM stopped.")
 
 
 # ─── Main ─────────────────────────────────────────────────────────
 def main():
-    models   = load_models_from_config(CONFIG_FILE)
-    base_dir = get_base_dir()
-
-    show_models(models, base_dir)
-    selection = get_user_input(models, base_dir)
-
-    print("\n" + "="*65)
-    print("  Summary")
-    print("="*65)
-    for k, v in selection.items():
-        print(f"  {k:<20}: {v}")
-    print("="*65)
-
-    confirm = input("\nProceed? (y/n): ").strip().lower()
-    if confirm != "y":
-        print("❌ Aborted.")
-        sys.exit(0)
-
+    logger.info(f"Log: {log_file}")
+    validate_env()
+    port = get_vllm_port()
     kill_existing_vllm()
-    start_vllm(selection)
-
-    print(f"\n🟢 vLLM running. Press Ctrl+C to stop.\n")
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        print("\n🔴 Stopping vLLM...")
-        subprocess.run(["pkill", "-f", "vllm serve"])
-        print("✅ Done.")
+    process = start_vllm(port)
+    stream_logs(process)
 
 
 if __name__ == "__main__":
