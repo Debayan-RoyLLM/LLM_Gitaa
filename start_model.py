@@ -83,7 +83,6 @@ def kill_existing_vllm():
 def start_vllm(port):
     env = os.environ.copy()
     env["CUDA_VISIBLE_DEVICES"] = GPU_INDEX
-
     cmd = [
         "vllm", "serve", MODEL_PATH,
         "--port"                  , port,
@@ -93,7 +92,8 @@ def start_vllm(port):
         "--dtype"                 , DTYPE,
         "--gpu-memory-utilization", GPU_MEMORY,
         "--served-model-name"     , MODEL_NAME,
-    ]
+        "--enable-auto-tool-choice",   
+        "--tool-call-parser", "hermes",
 
     logger.info(f"Starting vLLM | model={MODEL_NAME} port={port} gpu={GPU_INDEX}")
     logger.info(f"Command: {' '.join(cmd)}")
