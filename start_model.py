@@ -83,17 +83,40 @@ def kill_existing_vllm():
 def start_vllm(port):
     env = os.environ.copy()
     env["CUDA_VISIBLE_DEVICES"] = GPU_INDEX
+    MODEL_PATH    = "models/qwen3.6-35b-a3b-fp8"
+    MODEL_NAME    = "qwen35b"
+    MAX_MODEL_LEN = "262144"
+    GPU_MEMORY    = "0.80"
+    port          = "8007"
     cmd = [
-        "vllm", "serve", MODEL_PATH,
-        "--port"                  , port,
-        "--api-key"               , "not-needed",
-        "--enforce-eager",
-        "--max-model-len"         , MAX_MODEL_LEN,
-        "--dtype"                 , DTYPE,
-        "--gpu-memory-utilization", GPU_MEMORY,
-        "--served-model-name"     , MODEL_NAME,
-        "--enable-auto-tool-choice",   
-        "--tool-call-parser", "hermes",
+    "vllm", "serve", MODEL_PATH,
+    "--port"                    , port,
+    "--api-key"                 , "not-needed",
+    "--max-model-len"           , MAX_MODEL_LEN,
+    "--gpu-memory-utilization"  , GPU_MEMORY,
+    "--served-model-name"       , MODEL_NAME,
+
+    # ✅ Caching & throughput
+    "--enable-prefix-caching"   ,
+    "--enable-chunked-prefill"  ,
+    "--max-num-seqs"            , "512",        # ✅ CHANGED: 64→512, avoids Mamba cache block overflow
+    "--max-num-batched-tokens"  , "32768",
+
+    # ✅ FP8 KV cache — saves VRAM, negligible quality loss
+    "--kv-cache-dtype"          , "fp8",        # ✅ NEW: ~1-2% quality loss, big VRAM saving
+
+    # ✅ Logging
+    "--uvicorn-log-level"       , "warning",
+    "--max-log-len"             , "128",
+
+    # ✅ Reasoning — CRITICAL for Qwen3.6
+    "--reasoning-parser"        , "qwen3",      # ✅ NEW: separates think vs answer
+
+    # ✅ Tool calling
+    "--enable-auto-tool-choice" ,
+    "--tool-call-parser"        , "qwen3_coder", # ✅ CHANGED: hermes→qwen3_coder
+]
+
 
     logger.info(f"Starting vLLM | model={MODEL_NAME} port={port} gpu={GPU_INDEX}")
     logger.info(f"Command: {' '.join(cmd)}")
