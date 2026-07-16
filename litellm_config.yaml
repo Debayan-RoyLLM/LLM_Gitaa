@@ -1,1 +1,62 @@
+model_list:
+  - model_name: qwen35b
+    litellm_params:
+      model: openai/qwen35b
+      api_base: http://localhost:8007/v1
+      api_key: "not-needed"
+      stream: true
+  - model_name: qwen9b
+    litellm_params:
+      model: openai/qwen9b
+      api_base: http://localhost:8008/v1
+      api_key: "not-needed"
+      stream: true
 
+litellm_settings:
+  num_retries: 3
+  request_timeout: 120
+  telemetry: false
+  default_max_tokens: 4096
+  drop_params: true
+  success_callback: ["prometheus"]
+  failure_callback: ["prometheus"]
+
+router_settings:
+  routing_strategy: "least-busy"
+  num_retries: 3
+  retry_after: 2
+  timeout: 120
+  allowed_fails: 2
+  cooldown_time: 60
+  enable_pre_call_checks: true
+
+cache:
+  type: "redis"
+  host: "redis"
+  port: 6379
+  ttl: 3600
+  similarity_threshold: 0.85
+
+general_settings:
+  master_key: "internal-key"
+ # database_url: "postgresql://user:pass@postgres:5432/litellm"
+ # store_model_in_db: true
+
+#guardrails:
+#  - guardrail_name: "block-cc"
+#    litellm_params:
+#      guardrail: presidio
+#      mode: "pre_call"
+#      default_on: true
+#      pii_entities_config:
+#        CREDIT_CARD: "BLOCK"
+
+#  - guardrail_name: "pii-mask"
+#    litellm_params:
+#      guardrail: presidio
+#      mode: "pre_call"
+#      default_on: true
+#      pii_entities_config:
+#        EMAIL_ADDRESS: "MASK"
+#        PHONE_NUMBER: "MASK"
+#        US_SSN: "MASK"
