@@ -1,0 +1,128 @@
+# ============================================================================
+#  Dockerized internal LLM stack
+#  Services:  vllm-qwen35b (GPU)  ->  litellm (proxy, port 4000)  ->  redis
+#  Optional:  vllm-qwen9b, presidio  (see commented blocks at the bottom)
+# ============================================================================
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # 1) vLLM  — serves your Qwen3.6 35B (fp8). This is the only GPU container.
+  #    Command = your working start_model.py flags, verbatim.
+  # ---------------------------------------------------------------------------
+  vllm-qwen35b:
+    image: vllm/vllm-openai:latest      # ⚠️ PIN to the version you tested, e.g. v0.6.x
+                                        #    (run `pip show vllm` in your working env)
+    container_name: vllm-qwen35b
+    runtime: nvidia                     # gives the container access to the GPU
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=0        # your old GPU_INDEX=0
+      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN:-}
+    volumes:
+      - ./models:/models:ro             # your local weights folder -> /models inside
+      - hf-cache:/root/.cache/huggingface
+    ipc: host                           # vLLM needs shared memory; without this it crashes
+    command:
+      - "--model=/models/qwen3.6-35b-a3b-fp8"
+      - "--served-model-name=qwen35b"
+      - "--port=8007"
+      - "--api-key=not-needed"
+      - "--max-model-len=262144"
+      - "--gpu-memory-utilization=0.80"
+      - "--enable-prefix-caching"
+      - "--enable-chunked-prefill"
+      - "--max-num-seqs=512"
+      - "--max-num-batched-tokens=32768"
+      - "--kv-cache-dtype=fp8"
+      - "--uvicorn-log-level=warning"
+      - "--max-log-len=128"
+      - "--reasoning-parser=qwen3"
+      - "--enable-auto-tool-choice"
+      - "--tool-call-parser=qwen3_coder"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8007/health"]
+      start_period: 600s                # a 35B model can take several minutes to load
+      interval: 30s
+      timeout: 10s
+      retries: 20
+    restart: unless-stopped
+    # NOTE: no `ports:` block on purpose — vLLM has no real auth, so we keep it
+    # reachable only from inside the network (by LiteLLM). Uncomment below ONLY
+    # for local debugging:
+    # ports:
+    #   - "8007:8007"
+
+  # ---------------------------------------------------------------------------
+  # 2) Redis — semantic cache backend referenced by litellm_config.yaml
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: unless-stopped
+    # data does not need to persist for a cache; add a volume here if you want it to.
+
+  # ---------------------------------------------------------------------------
+  # 3) LiteLLM — the single public entrypoint (port 4000).
+  #    Replaces start_litellm.py (kill/health/input logic -> Docker handles it).
+  # ---------------------------------------------------------------------------
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest   # pin a tag in production
+    container_name: litellm
+    depends_on:
+      vllm-qwen35b:
+        condition: service_healthy      # wait until vLLM /health is ok before starting
+      redis:
+        condition: service_started
+    environment:
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-internal-key}
+      # These two replace enable_guardrails() from start_litellm.py.
+      # They point at the presidio SERVICE NAME, not localhost.
+      - PRESIDIO_ANALYZER_API_BASE=http://presidio:5005
+      - PRESIDIO_ANONYMIZER_API_BASE=http://presidio:5005
+    volumes:
+      - ./litellm_config.yaml:/app/config.yaml:ro
+    command: ["--config", "/app/config.yaml", "--port", "5000"]
+    ports:
+      - "5000:5000"                     # the ONLY door to the outside world
+    restart: unless-stopped
+
+# =============================================================================
+# OPTIONAL SERVICES — uncomment when you need them.
+# =============================================================================
+#
+#  # 4) Second model (qwen9b on 8008). WARNING: on a single GPU this competes for
+#  #    VRAM with the 35B. Give it a second GPU (NVIDIA_VISIBLE_DEVICES=1) or lower
+#  #    both gpu-memory-utilization values.
+#  vllm-qwen9b:
+#    image: vllm/vllm-openai:latest
+#    container_name: vllm-qwen9b
+#    runtime: nvidia
+#    environment:
+#      - NVIDIA_VISIBLE_DEVICES=1        # ideally a different GPU than the 35B
+#    volumes:
+#      - ./models:/models:ro
+#      - hf-cache:/root/.cache/huggingface
+#    ipc: host
+#    command:
+#      - "--model=/models/<your-qwen9b-folder>"
+#      - "--served-model-name=qwen9b"
+#      - "--port=8008"
+#      - "--api-key=not-needed"
+#    healthcheck:
+#      test: ["CMD", "curl", "-f", "http://localhost:8008/health"]
+#      start_period: 300s
+#      interval: 30s
+#      retries: 20
+#    restart: unless-stopped
+#
+#  # 5) Presidio PII server (needs Dockerfile.presidio + your presidio_server.py)
+#  presidio:
+#    build:
+#      context: .
+#      dockerfile: Dockerfile.presidio
+#    container_name: presidio
+#    restart: unless-stopped
+#    # no public port needed; litellm reaches it as http://presidio:5005
+
+volumes:
+  hf-cache:
