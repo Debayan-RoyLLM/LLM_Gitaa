@@ -4,6 +4,8 @@ model_list:
       model: openai/qwen35b
       api_base: http://localhost:8007/v1
       api_key: "not-needed"
+      input_cost_per_token: 0.0000001
+      output_cost_per_token: 0.0000001
       stream: true
   - model_name: qwen9b
     litellm_params:
@@ -39,8 +41,8 @@ cache:
 
 general_settings:
   master_key: "internal-key"
- # database_url: "postgresql://user:pass@postgres:5432/litellm"
- # store_model_in_db: true
+  database_url: "postgresql://litellm:strong-password@localhost:5432/litellm"
+  store_model_in_db: true
 
 #guardrails:
 #  - guardrail_name: "block-cc"
