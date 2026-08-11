@@ -1,0 +1,58 @@
+# ============================================================================
+#  Standalone LiteLLM config for Qwen3-VL-8B-Instruct.
+#  Runs on port 5001 so it does not collide with the existing proxy on 5000.
+#
+#  To instead ADD this model to your existing proxy, copy just the
+#  model_list entry below into ../litellm_config.yaml.
+# ============================================================================
+
+model_list:
+  - model_name: qwen3vl8b
+    litellm_params:
+      model: openai/qwen3vl8b
+      api_base: http://localhost:8009/v1
+      api_key: "not-needed"
+      input_cost_per_token: 0.0000001
+      output_cost_per_token: 0.0000001
+      stream: true
+    model_info:
+      # REQUIRED. litellm_settings.drop_params strips params it believes the
+      # model cannot handle — without this flag, image_url content parts on a
+      # model it does not recognise get dropped and you get a text-only reply
+      # with no error.
+      supports_vision: true
+      supports_function_calling: true
+      max_input_tokens: 32768
+      max_output_tokens: 4096
+
+litellm_settings:
+  num_retries: 3
+  # Vision prefill is much slower than text: a single high-res image can be
+  # thousands of vision tokens. 120s (the 35B value) is too tight.
+  request_timeout: 300
+  telemetry: false
+  default_max_tokens: 4096
+  drop_params: true
+  success_callback: ["prometheus"]
+  failure_callback: ["prometheus"]
+
+router_settings:
+  routing_strategy: "least-busy"
+  num_retries: 3
+  retry_after: 2
+  timeout: 300
+  allowed_fails: 2
+  cooldown_time: 60
+  enable_pre_call_checks: true
+
+# NOTE: no `cache:` block on purpose.
+# Base64 images make every request body near-unique, so the hit rate is ~0
+# while each entry costs megabytes of Redis. Enable it only if your callers
+# send stable http(s) image URLs rather than inline base64.
+
+general_settings:
+  master_key: "internal-key"
+  store_model_in_db: false
+  # Add database_url here if you want this proxy to share the 35B's
+  # key/budget database:
+  # database_url: "postgresql://litellm:strong-password@localhost:5432/litellm"

@@ -1,0 +1,47 @@
+# ============================================================================
+#  Docker variant of litellm_config_vl.yaml.
+#
+#  ONLY difference: api_base points at the compose SERVICE NAME instead of
+#  localhost. Inside a container "localhost" is the container itself, so the
+#  bare-metal config would fail with connection-refused here.
+#
+#  Used by docker-compose.vl.yml. Keep the two files in sync.
+# ============================================================================
+
+model_list:
+  - model_name: qwen3vl8b
+    litellm_params:
+      model: openai/qwen3vl8b
+      api_base: http://vllm-qwen3vl8b:8009/v1   # <-- service name, not localhost
+      api_key: "not-needed"
+      input_cost_per_token: 0.0000001
+      output_cost_per_token: 0.0000001
+      stream: true
+    model_info:
+      # REQUIRED — see litellm_config_vl.yaml for why.
+      supports_vision: true
+      supports_function_calling: true
+      max_input_tokens: 32768
+      max_output_tokens: 4096
+
+litellm_settings:
+  num_retries: 3
+  request_timeout: 300
+  telemetry: false
+  default_max_tokens: 4096
+  drop_params: true
+  success_callback: ["prometheus"]
+  failure_callback: ["prometheus"]
+
+router_settings:
+  routing_strategy: "least-busy"
+  num_retries: 3
+  retry_after: 2
+  timeout: 300
+  allowed_fails: 2
+  cooldown_time: 60
+  enable_pre_call_checks: true
+
+general_settings:
+  master_key: "internal-key"
+  store_model_in_db: false
