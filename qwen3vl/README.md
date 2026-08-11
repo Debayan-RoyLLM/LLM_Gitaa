@@ -20,6 +20,18 @@ existing 35B/9B setup. Nothing outside this folder is modified.
 | `litellm_config_vl.docker.yaml` | Same, but `api_base` = compose service name. |
 | `docker-compose.vl.yml` | vLLM + LiteLLM as containers. |
 | `test_vl.py` | Smoke test: health, models, text, **image**, streaming. |
+| `litellm_merge_snippet.yaml` | Paste-in block to serve this model from the *existing* proxy on 5000 instead. |
+
+## One proxy or two?
+
+LiteLLM itself is unchanged either way — same image, same version, config only.
+
+- **Two proxies** (what `docker-compose.vl.yml` does): this model on 5001,
+  isolated. But it has its own keys/budgets, so quota accounting is split and
+  callers need a second URL.
+- **One proxy**: paste `litellm_merge_snippet.yaml` into `../litellm_config.yaml`
+  and drop the LiteLLM parts here. Shared keys, budgets and Prometheus; callers
+  just change the `"model"` field. Preferred unless you want hard isolation.
 
 ## Prerequisites
 
