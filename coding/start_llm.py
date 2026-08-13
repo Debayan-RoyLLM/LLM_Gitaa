@@ -83,10 +83,10 @@ def kill_existing_vllm():
 def start_vllm(port):
     env = os.environ.copy()
     env["CUDA_VISIBLE_DEVICES"] = GPU_INDEX
-    MODEL_PATH    = "models/qwen3.6-35b-a3b-fp8"
+    MODEL_PATH    = "models/Qwen3.6-35B-A3B"
     MODEL_NAME    = "qwen35b"
-    MAX_MODEL_LEN = "262144"
-    GPU_MEMORY    = "0.80"
+    MAX_MODEL_LEN = "100000"
+    GPU_MEMORY    = "0.95"
     port          = "8007"
     cmd = [
     "vllm", "serve", MODEL_PATH,
@@ -104,6 +104,16 @@ def start_vllm(port):
 
     # ✅ FP8 KV cache — saves VRAM, negligible quality loss
     "--kv-cache-dtype"          , "fp8",        # ✅ NEW: ~1-2% quality loss, big VRAM saving
+
+    # A3B; Qwen3.6 has native Multi-Token Prediction. Try num_speculative_tokens 2-3.
+    "--speculative-config"      , '{"method":"mtp","num_speculative_tokens":2}',
+
+    # [OFFICIAL] Listed in the recipe as an optional throughput knob to add after profiling.
+    "--async-scheduling" ,
+
+    # flashinfer needs a recent GPU + the flashinfer package, or startup fails.
+    "--attention-backend"       , "flashinfer",
+    "--moe-backend"             , "triton",       # optimized MoE kernel (also try "triton")
 
     # ✅ Logging
     "--uvicorn-log-level"       , "warning",

@@ -44,12 +44,13 @@ def validate_env():
     missing = [k for k, v in {"MODEL_NAME": MODEL_NAME,
                                "MODEL_PATH": MODEL_PATH,
                                "GPU_INDEX" : GPU_INDEX}.items() if not v]
-    if missing:
-        logger.error(f"Missing required env vars: {missing}")
-        logger.error("Usage: MODEL_NAME=qwen-2.5-coder-7b MODEL_PATH=./models/Qwen GPU_INDEX=0 nohup python3 start_model.py &")
-        sys.exit(1)
+    #if missing:
+    #    logger.error(f"Missing required env vars: {missing}")
+    #    logger.error("Usage: MODEL_NAME=qwen-2.5-coder-7b MODEL_PATH=./models/Qwen GPU_INDEX=0 nohup python3 start_model.py &")
+    #    sys.exit(1)
 
-    if not os.path.isdir(MODEL_PATH):
+    #if not os.path.isdir(MODEL_PATH):
+    if missing:
         logger.error(f"MODEL_PATH does not exist: {MODEL_PATH}")
         sys.exit(1)
 
@@ -83,9 +84,9 @@ def kill_existing_vllm():
 def start_vllm(port):
     env = os.environ.copy()
     env["CUDA_VISIBLE_DEVICES"] = GPU_INDEX
-    MODEL_PATH    = "models/qwen3.6-35b-a3b-fp8"
-    MODEL_NAME    = "qwen35b"
-    MAX_MODEL_LEN = "262144"
+    MODEL_PATH    = "models"
+    MODEL_NAME    = "qwen3vl30b"
+    MAX_MODEL_LEN = "100000"
     GPU_MEMORY    = "0.80"
     port          = "8007"
     cmd = [
@@ -106,25 +107,25 @@ def start_vllm(port):
     "--kv-cache-dtype"          , "fp8",        # ✅ NEW: ~1-2% quality loss, big VRAM saving
 
     # A3B; Qwen3.6 has native Multi-Token Prediction. Try num_speculative_tokens 2-3.
-    "--speculative-config"      , '{"method":"mtp","num_speculative_tokens":2}',
+    #"--speculative-config"      , '{"method":"mtp","num_speculative_tokens":2}',
 
     # [OFFICIAL] Listed in the recipe as an optional throughput knob to add after profiling.
     "--async-scheduling" ,
 
     # flashinfer needs a recent GPU + the flashinfer package, or startup fails.
     "--attention-backend"       , "flashinfer",
-    "--moe-backend"             , "marlin",       # optimized MoE kernel (also try "triton")
+    #"--moe-backend"             , "triton",       # optimized MoE kernel (also try "triton")
 
     # ✅ Logging
     "--uvicorn-log-level"       , "warning",
     "--max-log-len"             , "128",
 
     # ✅ Reasoning — CRITICAL for Qwen3.6
-    "--reasoning-parser"        , "qwen3",      # ✅ NEW: separates think vs answer
+    #"--reasoning-parser"        , "qwen3",      # ✅ NEW: separates think vs answer
 
     # ✅ Tool calling
     "--enable-auto-tool-choice" ,
-    "--tool-call-parser"        , "qwen3_coder", # ✅ CHANGED: hermes→qwen3_coder
+    "--tool-call-parser"        , "hermes", # ✅ CHANGED: hermes→qwen3_coder
 ]
 
 
