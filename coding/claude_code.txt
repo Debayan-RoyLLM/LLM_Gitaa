@@ -1,0 +1,19 @@
+export ANTHROPIC_BASE_URL=https://user.tail02e79b.ts.net
+export ANTHROPIC_AUTH_TOKEN=sk-xYErtKOfKQGqjjpKniFC8Q
+export NODE_TLS_REJECT_UNAUTHORIZED=0
+
+export ANTHROPIC_MODEL=qwen35b
+export ANTHROPIC_DEFAULT_OPUS_MODEL=qwen35b
+export ANTHROPIC_DEFAULT_SONNET_MODEL=qwen35b
+export ANTHROPIC_DEFAULT_HAIKU_MODEL=qwen35b
+
+claude
+
+
+docker run -d -p 3000:8080 \
+  --add-host=host.docker.internal:host-gateway \
+  --add-host=user.tail02e79b.ts.net:100.102.25.115 \
+  -v open-webui:/app/backend/data \
+  --name open-webui \
+  --restart always \
+  ghcr.io/open-webui/open-webui:main
