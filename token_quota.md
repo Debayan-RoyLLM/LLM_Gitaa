@@ -75,7 +75,7 @@ Order matters: database → cache → model server → proxy.
 
 ### 2.1 Start Postgres
 ```bash
-pg_ctlcluster 16 main start
+sudo pg_ctlcluster 18 main start
 ```
 
 ### 2.2 Start Redis (LiteLLM's cache)
