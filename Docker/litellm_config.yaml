@@ -1,45 +1,54 @@
 model_list:
+  # 1. Existing local model route
   - model_name: qwen35b
     litellm_params:
-      model: openai/qwen35b
+      model: hosted_vllm/qwen35b
       api_base: http://vllm-qwen35b:8007/v1
       api_key: "not-needed"
-      input_cost_per_token: 0.0000001
-      output_cost_per_token: 0.0000001
-      stream: true
-  - model_name: qwen9b
-    litellm_params:
-      model: openai/qwen9b
-      api_base: http://localhost:8008/v1
-      api_key: "not-needed"
-      stream: true
-     
+      #stream: true
+      #drop_params: true
+      #merge_system_messages: true
+    model_info:
+      supports_function_calling: true
+
+  # 3. Catch-all wildcard for any other Anthropic model requested by Claude Code
+  #- model_name: "*"
+  #  litellm_params:
+  #    model: openai/qwen35b
+  #    api_base: http://vllm-qwen35b:8007/v1
+  #    api_key: "not-needed"
+  #    stream: true
+  #    drop_params: true
+  #    merge_system_messages: true
 
 litellm_settings:
+  modify_params: true
   num_retries: 3
-  request_timeout: 120
+  request_timeout: 600
   telemetry: false
-  default_max_tokens: 4096
-  drop_params: true
+  #default_max_tokens: 4096
+  callbacks: merge_system.merge_system_instance
   success_callback: ["prometheus"]
   failure_callback: ["prometheus"]
-  drop_params: true
+  drop_params: true                       # Ensure unmapped params are dropped globally
   set_verbose: true
+
+  cache: true
+  cache_params:
+    type: "redis"
+    host: "redis"
+    port: 6379
+    ttl: 3600
+
+# Rest of your config (router_settings, cache, general_settings)...
 router_settings:
   routing_strategy: "least-busy"
   num_retries: 3
   retry_after: 2
-  timeout: 120
+  timeout: 600
   allowed_fails: 2
   cooldown_time: 60
   enable_pre_call_checks: true
-
-cache:
-  type: "redis"
-  host: "redis"
-  port: 6379
-  ttl: 3600
-  similarity_threshold: 0.85
 
 general_settings:
   master_key: "internal-key"
