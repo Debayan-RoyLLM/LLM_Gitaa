@@ -135,7 +135,7 @@ PAGE = r"""<!doctype html>
   <section class="card">
     <h2>Issue a key</h2>
     <label for="uid">Who is this for</label>
-    <input id="uid" placeholder="Debayan" autocomplete="off">
+    <input id="uid" placeholder="priya" autocomplete="off">
 
     <label for="tokens">Tokens per period</label>
     <input id="tokens" type="number" value="10000000" min="1" step="1000000">
