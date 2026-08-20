@@ -65,6 +65,22 @@ services:
     # data does not need to persist for a cache; add a volume here if you want it to.
 
   # ---------------------------------------------------------------------------
+  # 2b) PostgreSQL — persistent LiteLLM metadata store
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres
+    environment:
+      - POSTGRES_USER=litellm
+      - POSTGRES_PASSWORD=trong-password
+      - POSTGRES_DB=litellm
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
   # 3) LiteLLM — the single public entrypoint (port 4000).
   #    Replaces start_litellm.py (kill/health/input logic -> Docker handles it).
   # ---------------------------------------------------------------------------
@@ -76,15 +92,15 @@ services:
         condition: service_healthy      # wait until vLLM /health is ok before starting
       redis:
         condition: service_started
+      postgres:
+        condition: service_started
     environment:
       - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-internal-key}
       # These two replace enable_guardrails() from start_litellm.py.
       # They point at the presidio SERVICE NAME, not localhost.
       - PRESIDIO_ANALYZER_API_BASE=http://presidio:5005
       - PRESIDIO_ANONYMIZER_API_BASE=http://presidio:5005
-      - DATABASE_URL=postgresql://litellm:trong-password@host.docker.internal:5432/litellm
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - DATABASE_URL=postgresql://litellm:strong-password@postgres:5432/litellm
     volumes:
       - ./litellm_config.yaml:/app/config.yaml:ro
       - ./merge_system.py:/app/merge_system.py:ro
@@ -131,5 +147,33 @@ services:
     restart: unless-stopped
     # no public port needed; litellm reaches it as http://presidio:5005
 
+  # 6) Prometheus — scrapes LiteLLM metrics endpoint
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+
+  # 7) Grafana — dashboards & alerting on Prometheus data
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    volumes:
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin     # change in production!
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
 volumes:
   hf-cache:
+  postgres-data:
+  prometheus-data:
+  grafana-data:
