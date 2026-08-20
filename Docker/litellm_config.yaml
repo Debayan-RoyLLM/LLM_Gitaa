@@ -52,24 +52,24 @@ router_settings:
 
 general_settings:
   master_key: "internal-key"
-  database_url: "postgresql://litellm:strong-password@host.docker.internal:5432/litellm"
+  database_url: "postgresql://litellm:strong-password@postgres:5432/litellm"
   store_model_in_db: true
 
-#guardrails:
-#  - guardrail_name: "block-cc"
-#    litellm_params:
-#      guardrail: presidio
-#      mode: "pre_call"
-#      default_on: true
-#      pii_entities_config:
-#        CREDIT_CARD: "BLOCK"
+guardrails:
+  - guardrail_name: "block-cc"
+    litellm_params:
+      guardrail: presidio
+      mode: "pre_call"
+      default_on: true
+      pii_entities_config:
+        CREDIT_CARD: "BLOCK"
 
-#  - guardrail_name: "pii-mask"
-#    litellm_params:
-#      guardrail: presidio
-#      mode: "pre_call"
-#      default_on: true
-#      pii_entities_config:
-#        EMAIL_ADDRESS: "MASK"
-#        PHONE_NUMBER: "MASK"
-#        US_SSN: "MASK"
+  - guardrail_name: "pii-mask"
+    litellm_params:
+      guardrail: presidio
+      mode: "pre_call"
+      default_on: true
+      pii_entities_config:
+        EMAIL_ADDRESS: "MASK"
+        PHONE_NUMBER: "MASK"
+        US_SSN: "MASK"

@@ -72,10 +72,8 @@ services:
     container_name: postgres
     environment:
       - POSTGRES_USER=litellm
-      - POSTGRES_PASSWORD=trong-password
+      - POSTGRES_PASSWORD=strong-password
       - POSTGRES_DB=litellm
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     restart: unless-stopped

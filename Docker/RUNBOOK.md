@@ -135,13 +135,13 @@ docker compose exec litellm curl -s http://vllm-qwen35b:8007/health
 ## Phase 7 — Test the full chain (public entrypoint)
 
 ```bash
-curl http://localhost:5000/v1/chat/completions \
+curl http://localhost:4000/v1/chat/completions \
   -H "Authorization: Bearer internal-key" \
   -H "Content-Type: application/json" \
   -d '{"model":"qwen35b","messages":[{"role":"user","content":"hello"}]}'
 ```
 A JSON completion = the whole stack works.
-(Use the port that matches your compose `ports:` — 5000 or 4000.)
+(Use the port that matches your compose `ports:` — 4000 or 5000.)
 
 ---
 
@@ -246,7 +246,7 @@ docker compose up -d
 docker compose ps                 # wait for "healthy"
 
 # test
-curl http://localhost:5000/v1/chat/completions \
+curl http://localhost:4000/v1/chat/completions \
   -H "Authorization: Bearer internal-key" \
   -H "Content-Type: application/json" \
   -d '{"model":"qwen35b","messages":[{"role":"user","content":"hello"}]}'
