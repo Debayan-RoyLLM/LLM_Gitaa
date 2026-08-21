@@ -10,6 +10,8 @@ model_list:
       #merge_system_messages: true
     model_info:
       supports_function_calling: true
+      input_cost_per_token: 0.0000001
+      output_cost_per_token: 0.0000001
 
   # 3. Catch-all wildcard for any other Anthropic model requested by Claude Code
   #- model_name: "*"
@@ -28,8 +30,6 @@ litellm_settings:
   telemetry: false
   #default_max_tokens: 4096
   callbacks: merge_system.merge_system_instance
-  success_callback: ["prometheus"]
-  failure_callback: ["prometheus"]
   drop_params: true                       # Ensure unmapped params are dropped globally
   set_verbose: true
 

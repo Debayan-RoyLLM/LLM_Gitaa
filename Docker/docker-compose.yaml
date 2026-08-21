@@ -1,7 +1,7 @@
 # ============================================================================
 #  Dockerized internal LLM stack
 #  Services:  vllm-qwen35b (GPU)  ->  litellm (proxy, port 4000)  ->  redis
-#  Optional:  vllm-qwen9b, presidio  (see commented blocks at the bottom)
+#  Optional:  vllm-qwen9b, presidio  (see commented-out block below)
 # ============================================================================
 
 services:
@@ -145,33 +145,6 @@ services:
     restart: unless-stopped
     # no public port needed; litellm reaches it as http://presidio:5005
 
-  # 6) Prometheus — scrapes LiteLLM metrics endpoint
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: prometheus
-    volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus-data:/prometheus
-    ports:
-      - "9090:9090"
-    restart: unless-stopped
-
-  # 7) Grafana — dashboards & alerting on Prometheus data
-  grafana:
-    image: grafana/grafana:latest
-    container_name: grafana
-    volumes:
-      - grafana-data:/var/lib/grafana
-    ports:
-      - "3000:3000"
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin     # change in production!
-    depends_on:
-      - prometheus
-    restart: unless-stopped
-
 volumes:
   hf-cache:
   postgres-data:
-  prometheus-data:
-  grafana-data:

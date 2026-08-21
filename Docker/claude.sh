@@ -1,43 +1,6 @@
-#!/usr/bin/env bash
-#
-# Launch Claude Code against a self-hosted LiteLLM proxy.
-# Prompts for the model name first, then the API key.
-#
-#   ./claude-start.sh              -> prompt for both
-#   ./claude-start.sh qwen35b      -> model given, prompt for key only
-#   ./claude-start.sh qwen35b -c   -> extra args pass through to claude
-#   ./claude-start.sh --resume id  -> skip prompts, resume existing session
-
 set -euo pipefail
 
 BASE_URL="${LITELLM_BASE_URL:-https://user.tail02e79b.ts.net}"
-
-# ------------------------------------------------------------------ resume
-# If the user passes --resume, skip the launcher flow entirely and let
-# Claude Code handle session recovery directly.  Model / key still come
-# from the environment (or Claude Code's own state), so we export sensible
-# defaults but do NOT prompt or verify.
-RESUME_ID=""
-if [[ "$1" == "--resume" ]] && [[ $# -ge 2 ]]; then
-  RESUME_ID="$2"
-  shift 2
-elif [[ "$1" == "--resume" ]] && [[ $# -eq 1 ]]; then
-  echo "  Usage: $0 --resume <session-id> [claude-args...]" >&2
-  exit 1
-fi
-
-# --resume fast path ---------------------------------------------------------
-if [[ -n "$RESUME_ID" ]]; then
-  echo "Resuming session ${RESUME_ID} on ${BASE_URL} ..."
-  export ANTHROPIC_BASE_URL="$BASE_URL"
-  export CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT=1
-  export CLAUDE_CODE_MAX_OUTPUT_TOKENS="${CLAUDE_CODE_MAX_OUTPUT_TOKENS:-8192}"
-  export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
-  export DISABLE_TELEMETRY=1
-  export DISABLE_ERROR_REPORTING=1
-  export DISABLE_AUTOUPDATER=1
-  exec claude --resume "${RESUME_ID}" "$@"
-fi
 
 # ------------------------------------------------------------ 1. model
 MODEL="${1:-}"

@@ -99,7 +99,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def _save_config(payload):
     """Apply POST /api/config changes and persist to disk."""
-    for key in ("litellm_url", "vllm_url", "model_name"):
+    for key in ("litellm_url", "model_name"):
         if payload.get(key):
             CONFIG[key] = payload[key].strip()
     if payload.get("master_key"):
@@ -128,7 +128,6 @@ def main():
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--litellm", help="LiteLLM base URL")
-    parser.add_argument("--vllm", help="vLLM base URL")
     parser.add_argument("--master-key", help="LiteLLM master key")
     parser.add_argument("--cost-per-token", type=float, help="must match litellm_config.yaml")
     args = parser.parse_args()
@@ -138,8 +137,6 @@ def main():
     load_config()
     if args.litellm:
         CONFIG["litellm_url"] = args.litellm
-    if args.vllm:
-        CONFIG["vllm_url"] = args.vllm
     if args.master_key:
         CONFIG["master_key"] = args.master_key
     if args.cost_per_token:
@@ -149,7 +146,6 @@ def main():
     srv = ThreadingHTTPServer((args.host, args.port), Handler)
     print("User Management on http://" + args.host + ":" + str(args.port))
     print("  LiteLLM : " + CONFIG["litellm_url"])
-    print("  vLLM    : " + CONFIG["vllm_url"])
     print("  Rate    : " + str(CONFIG["cost_per_token"]) + " per token")
     print("Ctrl-C to stop.")
     try:

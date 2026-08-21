@@ -125,7 +125,7 @@ PAGE = r"""<!doctype html>
 <header>
   <div>
     <h1>User Management</h1>
-    <div class="sub" id="stackline">LiteLLM · vLLM · loading</div>
+    <div class="sub" id="stackline">LiteLLM · loading</div>
   </div>
   <div class="rail" id="rail"></div>
 </header>
@@ -135,7 +135,7 @@ PAGE = r"""<!doctype html>
   <section class="card">
     <h2>Issue a key</h2>
     <label for="uid">Who is this for</label>
-    <input id="uid" placeholder="priya" autocomplete="off">
+    <input id="uid" placeholder="Debayan" autocomplete="off">
 
     <label for="tokens">Tokens per period</label>
     <input id="tokens" type="number" value="10000000" min="1" step="1000000">
@@ -175,8 +175,6 @@ PAGE = r"""<!doctype html>
       <div>
         <label for="c_lite">LiteLLM address</label>
         <input id="c_lite">
-        <label for="c_vllm">vLLM address</label>
-        <input id="c_vllm">
       </div>
       <div>
         <label for="c_key">Master key</label>
@@ -237,12 +235,10 @@ function loadConfig(){
   return api('/api/config').then(function(c){
     cfg = c;
     document.getElementById('c_lite').value = c.litellm_url;
-    document.getElementById('c_vllm').value = c.vllm_url;
     document.getElementById('c_cost').value = c.cost_per_token;
     document.getElementById('model').value = c.model_name;
     document.getElementById('stackline').textContent =
-      'LiteLLM ' + c.litellm_url.replace(/^https?:\/\//,'') +
-      ' · vLLM ' + c.vllm_url.replace(/^https?:\/\//,'') + ' · ' + c.model_name;
+      'LiteLLM ' + c.litellm_url.replace(/^https?:\/\//,'') + ' · ' + c.model_name;
     priceHint();
   });
 }
@@ -250,7 +246,6 @@ document.getElementById('savecfg').onclick = function(){
   api('/api/config', {method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({
       litellm_url: document.getElementById('c_lite').value,
-      vllm_url: document.getElementById('c_vllm').value,
       master_key: document.getElementById('c_key').value,
       cost_per_token: document.getElementById('c_cost').value
     })}).then(function(){
