@@ -1,6 +1,6 @@
 set -euo pipefail
 
-BASE_URL="${LITELLM_BASE_URL:-https://user.tail02e79b.ts.net}"
+BASE_URL="${LITELLM_BASE_URL:-https://user.tail34d33c.ts.net}"
 
 # ------------------------------------------------------------ 1. model
 MODEL="${1:-}"

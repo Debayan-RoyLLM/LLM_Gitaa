@@ -1,7 +1,7 @@
 # ============================================================================
 #  Dockerized internal LLM stack
 #  Services:  vllm-qwen35b (GPU)  ->  litellm (proxy, port 4000)  ->  redis
-#  Optional:  vllm-qwen9b, presidio  (see commented-out block below)
+#  Optional:  vllm-qwen27b
 # ============================================================================
 
 services:
