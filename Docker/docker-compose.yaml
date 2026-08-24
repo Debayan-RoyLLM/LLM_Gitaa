@@ -75,7 +75,7 @@ services:
       - POSTGRES_PASSWORD=strong-password
       - POSTGRES_DB=litellm
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"   # host-local only; never expose the DB publicly
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
