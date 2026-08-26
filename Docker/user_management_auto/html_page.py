@@ -85,12 +85,6 @@ PAGE = r"""<!doctype html>
   .readout b{color:var(--ink);font-weight:600}
   .acts{display:flex;gap:7px;margin-top:10px}
 
-  table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12.5px}
-  th{text-align:left;color:var(--muted);font-weight:500;padding:0 10px 8px 0;
-     border-bottom:1px solid var(--line);white-space:nowrap}
-  td{padding:8px 10px 8px 0;border-bottom:1px solid #EDEFF3;white-space:nowrap}
-  .num{text-align:right}
-
   details{margin-top:22px}
   summary{cursor:pointer;font-family:var(--mono);font-size:12px;color:var(--muted);
           text-transform:uppercase;letter-spacing:.12em}
@@ -104,17 +98,6 @@ PAGE = r"""<!doctype html>
   .toast.bad{background:var(--dead)}
   .newkey{margin-top:14px;padding:12px;border:1px dashed var(--ink);border-radius:8px;
           font-family:var(--mono);font-size:12.5px;word-break:break-all;background:#F6F7FA}
-
-  /* token count modal */
-  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:10;
-                 display:none;align-items:center;justify-content:center}
-  .modal-overlay.open{display:flex}
-  .modal{background:var(--card);border:1px solid var(--line);border-radius:12px;
-         padding:24px 28px;max-width:420px;width:90vw;box-shadow:0 8px 32px rgba(0,0,0,.18)}
-  .modal h3{margin:0 0 14px;font-size:15px;font-weight:640}
-  .modal .result{font-family:var(--mono);font-size:13px;padding:12px;
-                 background:#F6F7FA;border-radius:6px;word-break:break-all}
-  .modal .close{margin-top:14px;text-align:right}
 
   @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -163,11 +146,6 @@ PAGE = r"""<!doctype html>
 
 </div>
 
-<section class="card" style="margin-top:22px">
-  <h2>Users</h2>
-  <div id="users"><div class="empty">Loading…</div></div>
-</section>
-
 <details>
   <summary>Connection settings</summary>
   <div class="card" style="margin-top:12px">
@@ -189,15 +167,6 @@ PAGE = r"""<!doctype html>
   </div>
 </details>
 
-<!-- Token count modal -->
-<div class="modal-overlay" id="tokenModal">
-  <div class="modal">
-    <h3 id="tokenModalTitle">Token Count</h3>
-    <div class="result" id="tokenModalResult">Loading…</div>
-    <div class="close"><button class="ghost tiny" onclick="closeTokenModal()">Close</button></div>
-  </div>
-</div>
-
 </div>
 
 <script>
@@ -217,7 +186,6 @@ function toast(msg, bad){
   document.body.appendChild(t);
   setTimeout(function(){ t.remove(); }, bad ? 6000 : 3000);
 }
-function commas(n){ return Math.round(n).toLocaleString('en-US'); }
 function short(n){
   if (n >= 1e9) return (n/1e9).toFixed(1).replace(/\.0$/,'') + 'B';
   if (n >= 1e6) return (n/1e6).toFixed(1).replace(/\.0$/,'') + 'M';
@@ -396,72 +364,7 @@ function revoke(k){
   });
 }
 
-function drawUsers(){
-  api('/api/users').then(function(r){
-    var box = document.getElementById('users');
-    if (r.status >= 300){
-      box.innerHTML = '<div class="empty">Could not load users.</div>';
-      return;
-    }
-    var users = r.users || [];
-    if (!users.length){
-      box.innerHTML = '<div class="empty">No users registered yet.</div>';
-      return;
-    }
-    var html = '<table><thead><tr><th>User ID</th><th class="num">Keys</th>' +
-      '<th class="num">Spend</th><th class="num">Used Pct</th>' +
-      '<th class="num">Tokens</th><th></th></tr></thead><tbody>';
-    users.forEach(function(u){
-      var uid = u.user_id || '—';
-      var keys = u.keys ? u.keys.length : 0;
-      var spend = u.spend || 0;
-      var tokens = spend / parseFloat(cfg.cost_per_token);
-      var pct = u.max_budget ? Math.min(100, (spend / u.max_budget) * 100) : 0;
-      var tone = pct >= 100 ? 'over' : (pct >= 80 ? 'near' : '');
-      html += '<tr><td>' + uid + '</td>' +
-        '<td class="num">' + keys + '</td>' +
-        '<td class="num">' + spend.toFixed(6) + '</td>' +
-        '<td class="num"><b class="' + tone + '">' + pct.toFixed(1) + '%</b></td>' +
-        '<td class="num">' + commas(tokens) + '</td>' +
-        '<td><button class="ghost tiny" data-user="' + uid + '">Token Count</button></td></tr>';
-    });
-    box.innerHTML = html + '</tbody></table>';
-
-    // Attach click handlers to "Token Count" buttons
-    box.querySelectorAll('button[data-user]').forEach(function(btn){
-      btn.onclick = function(){ showTokenCount(btn.getAttribute('data-user')); };
-    });
-  });
-}
-
-function refresh(){ drawPeople(); drawUsers(); }
-
-function showTokenCount(userId){
-  var modal = document.getElementById('tokenModal');
-  var title = document.getElementById('tokenModalTitle');
-  var result = document.getElementById('tokenModalResult');
-  title.textContent = 'Token Count: ' + userId;
-  result.textContent = 'Loading…';
-  modal.classList.add('open');
-  fetch('/api/users/tokens/' + encodeURIComponent(userId)).then(function(r){
-    return r.json();
-  }).then(function(d){
-    if (d.error){
-      result.textContent = 'Error: ' + d.error;
-    } else {
-      result.textContent = 'total_tokens: ' + (d.total_tokens || 0);
-    }
-  }).catch(function(){
-    result.textContent = 'Failed to fetch token count.';
-  });
-}
-function closeTokenModal(){
-  document.getElementById('tokenModal').classList.remove('open');
-}
-// Close modal on overlay click
-document.getElementById('tokenModal').addEventListener('click', function(e){
-  if (e.target === this) closeTokenModal();
-});
+function refresh(){ drawPeople(); }
 
 loadConfig().then(function(){ drawStatus(); refresh(); });
 setInterval(drawStatus, 30000);

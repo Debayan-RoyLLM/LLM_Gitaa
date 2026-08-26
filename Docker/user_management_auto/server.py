@@ -6,7 +6,7 @@ import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .config import CONFIG, save_config
-from .api import call_litellm, stack_status, list_keys, get_total_tokens_for_user
+from .api import call_litellm, stack_status
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -48,34 +48,6 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, safe)
         elif self.path == "/api/status":
             self._send(200, {"services": stack_status()})
-        elif self.path == "/api/users":
-            # Derive user list from keys (LiteLLM may not have user objects)
-            status, data = list_keys(params={"return_full_object": "true"})
-            if status != 200:
-                self._send(status, data)
-                return
-            keys = data.get("keys", data.get("data", []))
-            # Group keys by user_id
-            users_map = {}
-            for k in keys:
-                if not isinstance(k, dict):
-                    continue
-                uid = k.get("user_id") or "unassigned"
-                if uid not in users_map:
-                    users_map[uid] = {"user_id": uid, "keys": [], "spend": 0, "max_budget": 0}
-                users_map[uid]["keys"].append(k)
-                users_map[uid]["spend"] += k.get("spend", 0)
-                if k.get("max_budget"):
-                    users_map[uid]["max_budget"] = max(users_map[uid]["max_budget"], k["max_budget"])
-            users = list(users_map.values())
-            self._send(200, {"users": users})
-        elif self.path.startswith("/api/users/tokens/"):
-            user_id = self.path[len("/api/users/tokens/"):]
-            if not user_id:
-                self._send(400, {"error": "user_id is required"})
-            else:
-                status, data = get_total_tokens_for_user(user_id)
-                self._send(status, data)
         else:
             self._send(404, {"error": "No such page."})
 

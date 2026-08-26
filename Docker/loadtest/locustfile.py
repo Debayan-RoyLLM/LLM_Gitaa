@@ -10,18 +10,21 @@ Pick ONE per run (mixing workloads in one run muddies the metrics):
   LOCUSTFILE_WORKLOAD=qa             locust --headless ...
   LOCUSTFILE_WORKLOAD=agentic        locust --headless ...
 """
+import json
 import os
 import random
+import statistics
 
-from locust import HttpUser, between, task
+from locust import HttpUser, events, between, task
 
 API_KEY = os.environ.get("LITELLM_MASTER_KEY", "internal-key")
 MODEL = os.environ.get("LITELLM_MODEL", "qwen27b")
 WORKLOAD = os.environ.get("LOCUSTFILE_WORKLOAD", "all")
 
 # ---------------------------------------------------------------------------
-# prompt pools — realistic shapes, distinct content per prompt so the
-# redis semantic cache (ttl 3600s) does NOT serve hits and inflate the numbers
+# prompt pools — realistic shapes. Every request gets a per-request salt
+# below, so the redis cache (ttl 3600s, exact-match on the prompt) can never
+# serve a hit and inflate the token/s numbers.
 # ---------------------------------------------------------------------------
 
 _FILLER = (
@@ -59,6 +62,93 @@ QA_QUESTIONS = [
     "What happens to a request when a KV cache slot is preempted in vLLM?",
     "Summarize the main failure modes of REST rate limiting.",
 ]
+
+# ~18 chars, fresh on every request: defeats the redis cache, adds ~4 tokens,
+# and the "ignore it" framing keeps the model from parroting it back verbatim.
+def _salted(doc: str) -> str:
+    return (
+        "(batch ref: " + random.randbytes(7).hex()
+        + f"-{random.randint(100, 999)} — ignore this ref)\n\n{doc}"
+    )
+
+# ---------------------------------------------------------------------------
+# per-task token throughput reporter
+# ---------------------------------------------------------------------------
+# Locust's standard metrics only carry request latency — the `usage` block
+# (prompt_tokens / completion_tokens) is thrown away. The tasks below call
+# TP.record() with the usage they already parsed, and this prints avg
+# tokens/s per task at the end of the run:
+#   i.p = prompt_tokens  / latency     (prefill: how fast the input is chewed)
+#   o.p = completion_tokens / latency  (decode:  how fast the answer is written)
+#
+# Per-request latency is the honest average: prefill runs first, then decode,
+# so a tokens/latency split is a lower bound for prefill and an upper bound
+# for decode. TTFT would give exact per-phase rates, but every task would
+# need stream:true (vLLM's non-stream responses arrive in a single flush, so
+# per-token client timing is not possible in non-stream mode).
+
+class TokenThroughput:
+    def __init__(self):
+        self.samples = {}          # task name -> list of (latency_ms, pt, ct, cached)
+        self._reported = False
+
+    def record(self, name, latency_ms, pt, ct, cached=0):
+        self.samples.setdefault(name, []).append((latency_ms, pt, ct, cached))
+
+    def report(self):
+        print()
+        print("=" * 100)
+        print("TOKEN THROUGHPUT PER TASK   (i.p = prompt/prefill, o.p = completion/decode)")
+        print("=" * 100)
+        hdr = (f"{'task':<22}{'reqs':>6}{'i.p tok':>10}{'o.p tok':>10}"
+               f"{'lat avg':>10}{'i.p tok/s':>12}{'o.p tok/s':>12}{'cached %':>10}")
+        print(hdr)
+        print("-" * len(hdr))
+        if not self.samples:
+            print("(no successful requests captured usage)")
+            print()
+            return
+        grand_pt = grand_ct = grand_ms = 0
+        for name in sorted(self.samples):
+            rows = self.samples[name]
+            pt = sum(r[1] for r in rows)
+            ct = sum(r[2] for r in rows)
+            cached = sum(r[3] for r in rows)
+            ms = sum(r[0] for r in rows)
+            grand_pt += pt; grand_ct += ct; grand_ms += ms
+            print(f"{name:<22}{len(rows):>6}{pt:>10,}{ct:>10,}"
+                  f"{ms/len(rows)/1000:>9.2f}s{pt/(ms/1000):>12.1f}{ct/(ms/1000):>12.1f}"
+                  f"{100*cached/pt if pt else 0:>9.0f}%")
+        print("-" * len(hdr))
+        print(f"{'TOTAL':<22}{'':>6}{grand_pt:>10,}{grand_ct:>10,}"
+              f"{grand_ms/1000:>9.1f}s{grand_pt/(grand_ms/1000):>12.1f}{grand_ct/(grand_ms/1000):>12.1f}")
+        print()
+        self._reported = True
+
+    def report_if_needed(self, exit_code):
+        # quitting fires once per process exit; test_stop can fire earlier
+        # (interactive stop) without a process exit following it
+        if not self._reported:
+            self.report()
+
+TP = TokenThroughput()
+events.quit.add_listener(TP.report_if_needed)
+
+
+def _record_usage(name, resp):
+    """Parse `usage` out of a completion response and feed the throughput table."""
+    try:
+        d = resp.json()
+    except (ValueError, TypeError):
+        return
+    usage = d.get("usage") or {}
+    pt = usage.get("prompt_tokens") or 0
+    ct = usage.get("completion_tokens") or 0
+    if not pt and not ct:
+        return
+    cached = (usage.get("prompt_tokens_details") or {}).get("cached_tokens") or 0
+    TP.record(name, resp.elapsed.total_seconds() * 1000, pt, ct, cached)
+
 
 # agentic coding: one tool each agent (like Claude Code) would likely use
 AGENT_TOOLS = [
@@ -136,7 +226,7 @@ class LLMUser(HttpUser):
         if WORKLOAD not in ("all", "summarization"):
             return
         doc = random.choice(SUMMARIZATION_DOCS)
-        self.client.post(
+        resp = self.client.post(
             "/v1/chat/completions",
             name="summarization",
             json={
@@ -146,29 +236,32 @@ class LLMUser(HttpUser):
                         "role": "system",
                         "content": "Summarize the document in 3 bullet points.",
                     },
-                    {"role": "user", "content": doc},
+                    {"role": "user", "content": _salted(doc)},
                 ],
                 "max_tokens": 300,
                 "temperature": 0.3,
             },
         )
+        _record_usage("summarization", resp)
 
     @task
     def qa(self):
         if WORKLOAD not in ("all", "qa"):
             return
-        self.client.post(
+        resp = self.client.post(
             "/v1/chat/completions",
             name="qa",
             json={
                 "model": MODEL,
                 "messages": [
-                    {"role": "user", "content": random.choice(QA_QUESTIONS)}
+                    {"role": "user",
+                     "content": _salted(random.choice(QA_QUESTIONS))}
                 ],
                 "max_tokens": 300,
                 "temperature": 0.2,
             },
         )
+        _record_usage("qa", resp)
 
     @task
     def agentic(self):
@@ -184,12 +277,15 @@ class LLMUser(HttpUser):
             self._session_msgs.append(
                 {
                     "role": "user",
-                    "content": "Tool output: <ok> done. Continue and finish the task.",
+                    "content": _salted(
+                        "Tool output: <ok> done. Continue and finish the task."
+                    ),
                 }
             )
-        self.client.post(
+        task_name = f"agentic_turn_{min(self._turn + 1, 3)}"
+        resp = self.client.post(
             "/v1/chat/completions",
-            name=f"agentic_turn_{min(self._turn + 1, 3)}",
+            name=task_name,
             json={
                 "model": MODEL,
                 "messages": self._session_msgs,
@@ -199,6 +295,7 @@ class LLMUser(HttpUser):
                 "temperature": 0.2,
             },
         )
+        _record_usage(task_name, resp)
         self._turn = (self._turn + 1) % 3
 
 

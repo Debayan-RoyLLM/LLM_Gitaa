@@ -95,15 +95,6 @@ def list_keys(params=None):
     return call_litellm("GET", path)
 
 
-def get_total_tokens_for_user(user_id):
-    """Return total_tokens from LiteLLM /model/info for a specific user.
-
-    Calls GET /model/info with body {user_id: ...}.
-    Returns (status_code, {"total_tokens": int} or {"error": str}).
-    """
-    return call_litellm("GET", "/model/info", body={"user_id": user_id})
-
-
 def delete_user(user_id):
     """Permanently delete a user and all their keys/logs (DELETE /user/delete)."""
     return call_litellm("DELETE", "/user/delete", body={"user_id": user_id})

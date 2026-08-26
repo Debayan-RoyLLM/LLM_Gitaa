@@ -4,6 +4,11 @@
 #  Optional:  vllm-qwen9b, presidio  (see commented-out block below)
 # ============================================================================
 
+# Pin the project name so Compose-derived names (volumes, network) can never
+# drift if the directory is renamed or COMPOSE_PROJECT_NAME changes — a drift
+# makes `docker compose down` treat the old volume as orphaned and delete it.
+name: qwen27b
+
 services:
 
   # ---------------------------------------------------------------------------
@@ -74,6 +79,8 @@ services:
       - POSTGRES_USER=litellm
       - POSTGRES_PASSWORD=strong-password
       - POSTGRES_DB=litellm
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     restart: unless-stopped
