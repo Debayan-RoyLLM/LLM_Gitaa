@@ -66,11 +66,11 @@ def _port_of(url):
 def stack_status():
     return [
         {"name": "Postgres", "port": CONFIG["postgres_port"],
-         "up": port_open(CONFIG["postgres_port"]),
-         "fix": "pg_ctlcluster 16 main start"},
+         "up": port_open(CONFIG["postgres_port"], CONFIG["postgres_host"]),
+         "fix": "docker compose up -d postgres"},
         {"name": "Redis", "port": CONFIG["redis_port"],
-         "up": port_open(CONFIG["redis_port"]),
-         "fix": "redis-server --daemonize yes"},
+         "up": port_open(CONFIG["redis_port"], CONFIG["redis_host"]),
+         "fix": "docker compose up -d redis"},
         {"name": "LiteLLM", "port": _port_of(CONFIG["litellm_url"]),
          "up": http_alive(CONFIG["litellm_url"].rstrip("/") + "/health/liveliness"),
          "fix": "python3 start_litellm.py"},

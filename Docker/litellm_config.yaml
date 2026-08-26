@@ -1,9 +1,9 @@
 model_list:
   # 1. Existing local model route
-  - model_name: qwen35b
+  - model_name: qwen27b
     litellm_params:
-      model: hosted_vllm/qwen35b
-      api_base: http://vllm-qwen35b:8007/v1
+      model: hosted_vllm/qwen27b
+      api_base: http://vllm-qwen27b:8007/v1
       api_key: "not-needed"
       #stream: true
       #drop_params: true
@@ -13,21 +13,6 @@ model_list:
       input_cost_per_token: 0.0000001
       output_cost_per_token: 0.0000001
 
-  - model_name: qwen27b
-    litellm_params:
-      model: hosted_vllm/qwen27b
-      api_base: http://vllm-qwen27b:8008/v1
-      api_key: "not-needed"
-      #stream: true
-      #drop_params: true
-      #merge_system_messages: true
-    model_info:
-      supports_function_calling: true
-      supports_reasoning: true
-      supports_xhigh_reasoning_effort: true
-      supports_low_reasoning_effort: true
-      input_cost_per_token: 0.0000001
-      output_cost_per_token: 0.0000001
   # 3. Catch-all wildcard for any other Anthropic model requested by Claude Code
   #- model_name: "*"
   #  litellm_params:

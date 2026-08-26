@@ -1,7 +1,7 @@
 # ============================================================================
 #  Dockerized internal LLM stack
 #  Services:  vllm-qwen35b (GPU)  ->  litellm (proxy, port 4000)  ->  redis
-#  Optional:  vllm-qwen27b
+#  Optional:  vllm-qwen9b, presidio  (see commented-out block below)
 # ============================================================================
 
 services:
@@ -10,22 +10,22 @@ services:
   # 1) vLLM  — serves your Qwen3.6 35B (fp8). This is the only GPU container.
   #    Command = your working start_model.py flags, verbatim.
   # ---------------------------------------------------------------------------
-  vllm-qwen35b:
+  vllm-qwen27b:
     image: vllm/vllm-openai:latest      # ⚠️ PIN to the version you tested, e.g. v0.6.x
                                         #    (run `pip show vllm` in your working env)
-    container_name: vllm-qwen35b
+    container_name: vllm-qwen27b
     runtime: nvidia                     # gives the container access to the GPU
     environment:
       - NVIDIA_VISIBLE_DEVICES=0        # your old GPU_INDEX=0
       - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN:-}
       - VLLM_USE_V1=0
     volumes:
-      - ./models:/models:ro             # your local weights folder -> /models inside
+      - ./Qwen3.8-27B:/Qwen3.8-27B:ro             # your local weights folder -> /models inside
       - hf-cache:/root/.cache/huggingface
     ipc: host                           # vLLM needs shared memory; without this it crashes
     command:
-      - "--model=/models"
-      - "--served-model-name=qwen35b"
+      - "--model=/Qwen3.8-27B"
+      - "--served-model-name=qwen27b"
       - "--port=8007"
       - "--api-key=not-needed"
       - "--max-model-len=100000"
@@ -75,7 +75,7 @@ services:
       - POSTGRES_PASSWORD=strong-password
       - POSTGRES_DB=litellm
     ports:
-      - "127.0.0.1:5432:5432"   # host-local only; never expose the DB publicly
+      - "5432:5432"
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
@@ -86,7 +86,7 @@ services:
     image: ghcr.io/berriai/litellm:main-latest   # pin a tag in production
     container_name: litellm
     depends_on:
-      vllm-qwen35b:
+      vllm-qwen27b:
         condition: service_healthy      # wait until vLLM /health is ok before starting
       redis:
         condition: service_started
@@ -145,6 +145,34 @@ services:
     restart: unless-stopped
     # no public port needed; litellm reaches it as http://presidio:5005
 
+  # ---------------------------------------------------------------------------
+  # 6) User Management console — web UI for LiteLLM token quotas.
+  #    Wakes up with the stack; points at the litellm SERVICE (not localhost).
+  # ---------------------------------------------------------------------------
+  user-management:
+    build:
+      context: .
+      dockerfile: Dockerfile.user-management
+    container_name: user-management
+    depends_on:
+      litellm:
+        condition: service_started
+    environment:
+      # Container names, not 127.0.0.1 — the default baked into config.py.
+      - LITELLM_URL=http://litellm:5000
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-internal-key}
+      - MODEL_NAME=qwen27b
+      # Service names for the Postgres/Redis health probes (the console
+      # probes them over the compose network, not its own localhost).
+      - POSTGRES_HOST=postgres
+      - REDIS_HOST=redis
+    volumes:
+      - user-management-data:/data          # persists edited settings across restarts
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
 volumes:
   hf-cache:
   postgres-data:
+  user-management-data:
