@@ -175,8 +175,24 @@ services:
       - REDIS_HOST=redis
     volumes:
       - user-management-data:/data          # persists edited settings across restarts
+    # No public port — only reachable via the nginx auth gate below.
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # 7) Nginx — Basic Auth gate in front of the user-management console.
+  #    The ONLY public door to port 8080.
+  # ---------------------------------------------------------------------------
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: nginx-auth
+    depends_on:
+      user-management:
+        condition: service_started
     ports:
       - "8080:8080"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/.htpasswd:/etc/nginx/.htpasswd:ro
     restart: unless-stopped
 
 volumes:
