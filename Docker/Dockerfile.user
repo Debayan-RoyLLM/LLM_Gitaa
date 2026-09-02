@@ -1,0 +1,7 @@
+FROM python:3.11-slim
+WORKDIR /app
+COPY user_management_auto/ ./user_management_auto/
+ENV USER_MANAGEMENT_AUTO_CONFIG=/data/.user_management_auto.json
+VOLUME /data
+EXPOSE 8080
+CMD ["python", "-m", "user_management_auto.server", "--host", "0.0.0.0", "--port", "8080"]

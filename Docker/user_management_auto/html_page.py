@@ -172,8 +172,13 @@ PAGE = r"""<!doctype html>
 <script>
 var cfg = {cost_per_token: 0.0000001};
 
+// The console is served under nginx's /user/ prefix on the main domain.
+// fetch() with an absolute path (e.g. "/api/config") would bypass that prefix
+// and hit the root location (litellm), so prepend the base path here. If the
+// app is ever served at a root path, set BASE = "".
+var BASE = "/user";
 function api(path, opts){
-  return fetch(path, opts).then(function(r){ return r.json(); });
+  return fetch(BASE + path, opts).then(function(r){ return r.json(); });
 }
 function lite(method, path, body){
   return api('/api/lite', {method:'POST', headers:{'Content-Type':'application/json'},

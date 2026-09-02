@@ -1,0 +1,5 @@
+gitaa-ai.tail34d33c.ts.net {
+    tls /etc/caddy/certs/gitaa-ai.tail34d33c.ts.net.crt /etc/caddy/certs/gitaa-ai.tail34d33c.ts.net.key
+
+    reverse_proxy litellm:5000
+}

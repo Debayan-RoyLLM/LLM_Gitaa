@@ -15,7 +15,7 @@ Stack (see `docker-compose.yaml`):
                 │        ├──▶ redis :6379 (semantic cache)             │
                 │        └──▶ postgres :5432 (LiteLLM metadata + keys) │
                 │                                                       │
-  console ─────▶ nginx :8080 (basic-auth gate) ─▶ user-management :8080 │
+  console ─────▶ <domain>/user/ (basic-auth gate) ─▶ user :8080        │
                 └─────────────────────────────────────────────────────┘
 ```
 
@@ -24,8 +24,9 @@ Stack (see `docker-compose.yaml`):
 - **redis** — semantic cache backend.
 - **postgres** — persistent LiteLLM metadata / API-key store (host port **5432**).
 - **presidio** — PII analyze/anonymize for the LiteLLM pre-call guardrails.
-- **user-management** — web console for token quotas; internal only.
-- **nginx** — basic-auth gate, the only public door to the console (**8080**).
+- **user** — web console for token quotas; internal only.
+- **nginx** — basic-auth gate, the only public door to the console, served on
+  the main domain under the **`/user/`** path (host port **443**).
 
 ---
 
@@ -82,8 +83,8 @@ Docker/
 ├── presidio_server.py           # presidio PII server
 ├── Dockerfile.presidio
 ├── requirements.presidio.txt
-├── Dockerfile.user-management
-├── user_management_auto/        # user-management console package
+├── Dockerfile.user
+├── user_management_auto/        # user console package
 ├── nginx/
 │   ├── nginx.conf               # basic-auth gate + proxy
 │   └── .htpasswd                # pre-generated basic-auth credentials
@@ -112,7 +113,7 @@ HF_TOKEN=
 EOF
 ```
 
-- **`LITELLM_MASTER_KEY`** — used by the `litellm` service, the `user-management`
+- **`LITELLM_MASTER_KEY`** — used by the `litellm` service, the `user`
   service, and (via its default) the LiteLLM `general_settings.master_key`.
   Set a strong value in production. The compose default fallback is
   `internal-key` if the variable is unset.
@@ -137,12 +138,12 @@ mismatch) is caught BEFORE containers start. Fix until it prints clean.
 
 ## Phase 4 — Build the custom images
 
-Two services are built from local code (`presidio` and `user-management`):
+Two services are built from local code (`presidio` and `user`):
 ```bash
-docker compose build presidio user-management
+docker compose build presidio user
 ```
 (`presidio` needs `Dockerfile.presidio` + `presidio_server.py` + `requirements.presidio.txt`;
-`user-management` needs `Dockerfile.user-management` + the `user_management_auto/` package.)
+`user` needs `Dockerfile.user` + the `user_management_auto/` package.)
 If you are not using the console, just build `presidio`.
 
 ---
@@ -157,7 +158,7 @@ the two custom images, starts the private network, mounts volumes, and boots
 services in dependency order:
 
 ```
-vllm-qwen27b ──health─▶ litellm ─▶ user-management ─▶ nginx
+vllm-qwen27b ──health─▶ litellm ─▶ user ─▶ nginx
 redis, postgres, presidio start alongside (litellm depends_on them)
 ```
 
@@ -170,7 +171,7 @@ docker compose ps                        # wait: vllm-qwen27b STATUS = "healthy"
 docker compose logs -f vllm-qwen27b      # watch the model load; Ctrl+C to stop watching
 ```
 `litellm` staying in "waiting/created" at first is CORRECT — `depends_on` holds
-it until vLLM is healthy, then it starts automatically. `user-management` and
+it until vLLM is healthy, then it starts automatically. `user` and
 `nginx` then come up after `litellm`.
 
 Sanity check vLLM directly (optional, internal port):
@@ -191,10 +192,10 @@ curl http://localhost:4000/v1/chat/completions \
 ```
 A JSON completion = the whole stack works.
 
-User-management console (host port **8080**, behind basic auth — the credentials
-are in `nginx/.htpasswd`):
+User console (served on the main domain under `/user/`, behind basic auth — the
+credentials are in `nginx/.htpasswd`):
 ```bash
-curl -u <user>:<password> http://localhost:8080/
+curl -u <user>:<password> https://gitaa-ai.tail34d33c.ts.net/user/
 ```
 
 ---
@@ -207,7 +208,7 @@ curl -u <user>:<password> http://localhost:8080/
 | Stop (keep containers)                 | `docker compose stop`                     |
 | Stop + remove containers & network     | `docker compose down`                     |
 | Restart one service                    | `docker compose restart litellm`          |
-| Rebuild after code change              | `docker compose up -d --build presidio user-management` |
+| Rebuild after code change              | `docker compose up -d --build presidio user` |
 | Status / health                        | `docker compose ps`                       |
 | Logs (all / one)                       | `docker compose logs -f [service]`        |
 | Live resource use                      | `docker compose stats`                    |
@@ -226,10 +227,11 @@ curl -u <user>:<password> http://localhost:8080/
 - **LiteLLM errors on key / DB startup** → Postgres down, or the `DATABASE_URL` password doesn't match `POSTGRES_PASSWORD`. Check `docker compose logs postgres litellm`.
 - **`callbacks: merge_system.merge_system_instance` fails to load** → `merge_system.py` must be present in the folder and mounted at `/app/merge_system.py` (it is in the compose). A typo in the `callbacks:` line in `litellm_config.yaml` also breaks this.
 - **Guardrails (PII) silently missing / 5xx on chat** → `presidio` not up; confirm with `docker compose ps` and `docker compose logs presidio`. The `presidio` guardrails in `litellm_config.yaml` need `http://presidio:5005` reachable.
-- **Console (port 8080) gives 401** → wrong basic-auth; the credentials live in `nginx/.htpasswd`.
-- **Console can't reach LiteLLM** → `user-management` must reach `litellm` over the compose network (it sets `LITELLM_URL=http://litellm:5000`). Confirm `litellm` is up.
+- **Console gives 401** → wrong basic-auth; the credentials live in `nginx/.htpasswd`.
+- **Console can't reach LiteLLM** → `user` must reach `litellm` over the compose network (it sets `LITELLM_URL=http://litellm:5000`). Confirm `litellm` is up.
+- **`/user/` returns 404** → the console app isn't up or nginx isn't routing; confirm `user` is running (`docker compose ps`) and that nginx has been restarted after any `nginx.conf` change.
 - **Port already in use** → change the left side of `ports:` (host port), e.g. `"5050:5000"`.
-- **Presidio / user-management build fails on COPY** → the source files (`presidio_server.py`, `user_management_auto/`) are missing from the folder.
+- **Presidio / user build fails on COPY** → the source files (`presidio_server.py`, `user_management_auto/`) are missing from the folder.
 
 ---
 
@@ -251,8 +253,10 @@ Use the version already in this folder. Key points to keep correct:
    `presidio` service), `DATABASE_URL` (must match Postgres creds).
  - litellm mounts `./litellm_config.yaml` and `./merge_system.py`.
  - Postgres `POSTGRES_PASSWORD` MUST match `DATABASE_URL` (litellm + config).
- - nginx mounts `./nginx/nginx.conf` + `./nginx/.htpasswd`, publishes `8080:8080`.
- - user-management depends_on litellm; sets `LITELLM_URL`/`MODEL_NAME`/
+ - nginx mounts `./nginx/nginx.conf` + `./nginx/.htpasswd`, publishes `443:443`.
+   It has one `server` block on the main domain: `/` → litellm, plus `/user/`
+   (basic-auth → `user:8080`, prefix stripped).
+ - user depends_on litellm; sets `LITELLM_URL`/`MODEL_NAME`/
    `POSTGRES_HOST`/`REDIS_HOST` (service names, not localhost).
 
 ### litellm_config.yaml  (DOCKER version — service names, NOT localhost)
@@ -340,7 +344,7 @@ EXPOSE 5005
 CMD ["python", "presidio_server.py"]
 ```
 
-### Dockerfile.user-management
+### Dockerfile.user
 ```dockerfile
 FROM python:3.11-slim
 WORKDIR /app
@@ -363,7 +367,7 @@ docker run --rm --gpus all nvidia/cuda:13.0.0-base-ubuntu22.04 nvidia-smi
 # launch
 cd Docker/
 docker compose config
-docker compose build presidio user-management
+docker compose build presidio user
 docker compose up -d
 docker compose ps                 # wait for vllm-qwen27b "healthy"
 
@@ -373,6 +377,6 @@ curl http://localhost:4000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{"model":"qwen27b","messages":[{"role":"user","content":"hello"}]}'
 
-# test console (basic-auth from nginx/.htpasswd)
-curl -u <user>:<password> http://localhost:8080/
+# test console (basic-auth from nginx/.htpasswd, on the main domain /user/ path)
+curl -u <user>:<password> https://gitaa-ai.tail34d33c.ts.net/user/
 ```

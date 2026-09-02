@@ -5,7 +5,7 @@ model_list:
       model: hosted_vllm/qwen27b
       api_base: http://vllm-qwen27b:8007/v1
       api_key: "not-needed"
-      #stream: true
+      stream: true
       #drop_params: true
       #merge_system_messages: true
     model_info:
