@@ -1,7 +1,6 @@
 # ============================================================================
 #  Dockerized internal LLM stack
-#  Services:  vllm-qwen35b (GPU)  ->  litellm (proxy, port 4000)  ->  redis
-#  Optional:  vllm-qwen9b, presidio  (see commented-out block below)
+#  Services:  vllm-qwen27b (GPU)  ->  litellm (proxy, port 4000)  ->  redis
 # ============================================================================
 
 # Pin the project name so Compose-derived names (volumes, network) can never
@@ -12,12 +11,11 @@ name: qwen27b
 services:
 
   # ---------------------------------------------------------------------------
-  # 1) vLLM  — serves your Qwen3.6 35B (fp8). This is the only GPU container.
+  # 1) vLLM  — serves your model. This is the only GPU container.
   #    Command = your working start_model.py flags, verbatim.
   # ---------------------------------------------------------------------------
   vllm-qwen27b:
-    image: vllm/vllm-openai:latest      # ⚠️ PIN to the version you tested, e.g. v0.6.x
-                                        #    (run `pip show vllm` in your working env)
+    image: vllm/vllm-openai:v0.27.1     # pinned to the version your working env was tested on
     container_name: vllm-qwen27b
     runtime: nvidia                     # gives the container access to the GPU
     environment:
@@ -90,7 +88,7 @@ services:
   #    Replaces start_litellm.py (kill/health/input logic -> Docker handles it).
   # ---------------------------------------------------------------------------
   litellm:
-    image: ghcr.io/berriai/litellm:main-latest   # pin a tag in production
+    image: ghcr.io/berriai/litellm:v1.98.0       # pinned to the version in your working env
     container_name: litellm
     depends_on:
       vllm-qwen27b:
@@ -122,7 +120,7 @@ services:
 #  #    VRAM with the 35B. Give it a second GPU (NVIDIA_VISIBLE_DEVICES=1) or lower
 #  #    both gpu-memory-utilization values.
 #  vllm-qwen9b:
-#    image: vllm/vllm-openai:latest
+#    image: vllm/vllm-openai:v0.27.1
 #    container_name: vllm-qwen9b
 #    runtime: nvidia
 #    environment:
@@ -178,6 +176,22 @@ services:
     # No public port — only reachable via the nginx auth gate below.
     restart: unless-stopped
 
+  open-webui:
+     image: ghcr.io/open-webui/open-webui:v0.11.0
+     container_name: open-webui
+     depends_on:
+       litellm:
+         condition: service_started
+     environment:
+       - OPENAI_API_BASE_URL=http://litellm:5000/v1
+       - OPENAI_API_KEY=${OPENWEBUI_LITELLM_KEY:-internal-key}
+       - WEBUI_URL=https://gitaa-ai.tail34d33c.ts.net:3000
+       - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY:-replace-with-long-random-string}
+       - ENABLE_OLLAMA_API=false
+     volumes:
+       - open-webui-data:/app/backend/data
+     restart: unless-stopped
+
   # ---------------------------------------------------------------------------
   # 7) Nginx — reverse proxy for ALL external traffic (port 443).
   #    Routes on the main domain:  / → litellm:5000  |  /user/ → user:8080 (basic auth)
@@ -190,8 +204,11 @@ services:
         condition: service_started
       litellm:
         condition: service_started
+      open-webui:
+        condition: service_started
     ports:
       - "443:443"
+      - "3000:3000"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -204,3 +221,4 @@ volumes:
   hf-cache:
   postgres-data:
   user-data:
+  open-webui-data:

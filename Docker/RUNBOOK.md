@@ -220,7 +220,7 @@ curl -u <user>:<password> https://gitaa-ai.tail34d33c.ts.net/user/
 ## Troubleshooting
 
 - **`could not select device driver ... [[gpu]]`** → NVIDIA toolkit not configured; redo Phase 0.3.
-- **vLLM exits with `no kernel image is available`** → the pinned vLLM image is too old for your GPU (e.g. Blackwell needs a recent tag + CUDA 13). Use a newer `vllm/vllm-openai` tag. (The repo currently uses `vllm-openai:latest` — pin it.)
+- **vLLM exits with `no kernel image is available`** → the pinned vLLM image is too old for your GPU (e.g. Blackwell needs a recent tag + CUDA 13). Use a newer `vllm/vllm-openai` tag. (The repo currently pins `vllm-openai:v0.27.1`.)
 - **vLLM OOM on load** → lower `--gpu-memory-utilization` (currently `0.95`) or `--max-model-len` (currently `100000`).
 - **`--model` path not found** → the folder mounted into vLLM must match the flag exactly. Here it's `./Qwen3.8-27B` → `--model=/Qwen3.8-27B`.
 - **LiteLLM cache errors** → Redis unreachable; confirm the `redis` service is up (`docker compose ps`).
@@ -241,7 +241,7 @@ curl -u <user>:<password> https://gitaa-ai.tail34d33c.ts.net/user/
 Use the version already in this folder. Key points to keep correct:
  - `name: qwen27b` — pinned project name so volumes/network never drift.
  - `image: vllm/vllm-openai:<tag>` — **pin a tag that supports your GPU**
-   (the repo currently uses `latest`).
+   (the repo currently pins `v0.27.1`).
  - `runtime: nvidia` and `ipc: host` on the vLLM service.
  - vLLM volumes: `./Qwen3.8-27B:/Qwen3.8-27B:ro` and `hf-cache`.
  - vLLM has **no `ports:`** on purpose (no real auth — internal only).
