@@ -1,22 +1,29 @@
 # LLM API Stack
 
-Dockerized internal LLM stack: **vLLM → LiteLLM proxy → Redis/Postgres**, with a **user-management web console** behind an **nginx Basic Auth** gate.
+Dockerized internal LLM stack: **vLLM → LiteLLM proxy → Redis/Postgres**, with a **user-management web console** behind an **nginx Basic Auth** gate and an **Open WebUI** chat interface behind the same TLS proxy. All external traffic enters over HTTPS through nginx.
+
+For architecture diagrams and request lifecycle see [arch.md](arch.md); for setup, troubleshooting, and day-to-day operations see [RUNBOOK.md](RUNBOOK.md).
 
 ## Services & Ports
 
-| Service            | Port | Purpose                              |
-| ------------------ | ---- | ------------------------------------ |
-| `litellm`          | 4000 | Public API entrypoint (LiteLLM)      |
-| `nginx-auth`       | 8080 | User-management console (auth-gated) |
-| `postgres`         | 5432 | LiteLLM metadata store               |
-| `redis`            | 6379 | Semantic cache                       |
-| `vllm-qwen27b`     | 8007 | Model server (internal only)         |
-| `presidio`         | 5005 | PII guardrail (internal only)        |
-| `user-management`  | 8080 | Web UI (internal only, via nginx)    |
+| Service            | Image                          | External port | Internal port | Purpose                                      |
+| ------------------ | ------------------------------ | ------------- | ------------- | -------------------------------------------- |
+| `litellm`          | `ghcr.io/berriai/litellm`      | 4000*         | 5000          | LLM gateway: auth, routing, cache, PII       |
+| `nginx`            | `nginx:1.27-alpine`            | **443**       | 443           | TLS termination, reverse proxy, HSTS         |
+| `open-webui`       | `ghcr.io/open-webui/open-webui`| **3000**      | 8080          | Chat UI (RAG, document upload)               |
+| `user`             | built from `Dockerfile.user`   | — (via 443)   | 8080          | User-management console (Basic Auth gated)   |
+| `postgres`         | `postgres:15-alpine`           | 5432          | 5432          | LiteLLM metadata store (keys, spend)         |
+| `redis`            | `redis:7-alpine`               | —             | 6379          | Semantic cache (1 h TTL)                     |
+| `vllm-qwen27b`     | `vllm/vllm-openai`             | —             | 8007          | Model server (Qwen3.8-27B, GPU, fp8)         |
+| `presidio`         | built from `Dockerfile.presidio` | —           | 5005          | PII analyzer/anonymizer (guardrail)          |
+
+\* `4000:5000` is still mapped in `docker-compose.yaml` for local/debug access, but the
+intended public door for the LLM API is **443 only** (nginx → litellm). Remove the 4000
+mapping if you want TLS to be the sole entry point.
 
 ## Credentials
 
-### 1. Nginx Basic Auth — user-management console (port 8080)
+### 1. Nginx Basic Auth — user-management console (port 443, path `/user/`)
 
 The only public door to the user-management web UI.
 
@@ -58,7 +65,7 @@ docker compose restart litellm
 
 ### 3. PostgreSQL — LiteLLM database
 
-- **Files:** `docker-compose.yaml` (lines 79–80, 108) and `litellm_config.yaml` (line 55)
+- **Files:** `docker-compose.yaml` (`POSTGRES_USER`, `POSTGRES_PASSWORD`, `DATABASE_URL`) and `litellm_config.yaml` (`database_url`)
 - **Default:** user `litellm`, password `strong-password`, db `litellm`
 
 #### How to change
@@ -79,15 +86,21 @@ Update **all three** occurrences to the same new value:
 > 1. **Remove the volume** and re-create the DB (all data is lost), **or**
 > 2. Connect to the running DB and create a new role, then update the config.
 
-### 4. Individual User Tokens (per-user API keys)
+### 4. Open WebUI — chat UI (port 3000)
 
-Managed through the **user-management web UI** (port 8080, behind Basic Auth) or the
-LiteLLM Admin API. Stored in the PostgreSQL database.
+- **Env:** `OPENWEBUI_LITELLM_KEY` in `.env` (defaults to `internal-key` — the LiteLLM master key)
+- **WebUI secret:** `WEBUI_SECRET_KEY` in `.env` (set a strong value in production)
+- **WebUI URL:** hardcoded in `docker-compose.yaml` as `https://gitaa-ai.tail34d33c.ts.net:3000`
+
+### 5. Individual User Tokens (per-user API keys)
+
+Managed through the **user-management web UI** (port 443, path `/user/`, behind Basic Auth)
+or the LiteLLM Admin API. Stored in the PostgreSQL database.
 
 ## Quick Start
 
 ```bash
-# First run (creates all containers + volumes)
+# First run (creates all containers + volumes, builds custom images)
 docker compose up -d
 
 # Check health
@@ -106,18 +119,28 @@ docker compose down -v
 Docker/
 ├── docker-compose.yaml          # all services
 ├── litellm_config.yaml          # LiteLLM models, cache, DB, guardrails
+├── .env                         # secrets (LITELLM_MASTER_KEY, HF_TOKEN, etc.)
 ├── merge_system.py              # LiteLLM callback (system message merging)
 ├── presidio_server.py           # Presidio PII server
-├── Dockerfile.presidio
-├── Dockerfile.user-management
-├── user_management_auto/        # user-management console source
+├── requirements.presidio.txt    # Presidio Python dependencies
+├── Dockerfile.presidio          # Presidio image
+├── Dockerfile.user              # User-management console image
+├── user_management_auto/        # user-management console source (stdlib http.server)
+│   ├── __init__.py
 │   ├── config.py
+│   ├── api.py
 │   ├── html_page.py
 │   ├── server.py
-│   └── ...
+│   └── wipe_users.py
 ├── nginx/
-│   ├── nginx.conf               # Basic Auth + proxy to user-management
-│   └── .htpasswd                # Basic Auth credentials
-└── loadtest/
-    └── locustfile.py            # Locust load-test script
+│   ├── nginx.conf               # TLS + reverse proxy (443: / → litellm, /user/ → user; 3000: / → open-webui)
+│   ├── .htpasswd                # Basic Auth credentials
+│   └── certs/                   # TLS certificates (mounted read-only)
+├── claude.sh                    # convenience launcher for Claude Code
+├── loadtest/
+│   ├── locustfile.py            # Locust load-test script
+│   ├── run.sh                   # helper runner
+│   └── results_*.csv            # past load-test results
+├── arch.md                      # architecture diagrams & request lifecycle
+└── RUNBOOK.md                   # setup, troubleshooting, day-to-day ops
 ```
